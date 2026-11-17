@@ -129,8 +129,13 @@ impl RegoVM {
 
                 match self.jump_to(*body_entry_point) {
                     Ok(_) => {
+                        // Interdict fork: a complete/function body that returned
+                        // without producing a value (for example a loop with no
+                        // match) did not succeed; its `else` must still be tried.
+                        let mut produced = true;
                         if matches!(rule_info.rule_type, RuleType::Complete) || is_function_call {
                             let current_result = self.get_register(result_reg)?.clone();
+                            produced = current_result != Value::Undefined;
                             if current_result != Value::Undefined {
                                 if let Some(ref expected) = first_successful_result {
                                     if *expected != current_result {
@@ -162,10 +167,11 @@ impl RegoVM {
                             })
                             .copied()
                             .unwrap_or(false);
-                        if !matches!(
+                        if (!matches!(
                             rule_info.rule_type,
                             RuleType::PartialSet | RuleType::PartialObject
-                        ) || next_is_else
+                        ) && produced)
+                            || (next_is_else && produced)
                         {
                             break;
                         }
@@ -224,16 +230,17 @@ impl RegoVM {
             });
         }
 
-        let rule_info = self
-            .program
+        // Interdict fork: borrow rule metadata through a cheap program handle
+        // instead of deep-cloning RuleInfo on every rule/function call.
+        let program = self.program.clone();
+        let rule_info = program
             .rule_infos
             .get(rule_idx)
-            .ok_or(VmError::RuleInfoMissing {
+            .ok_or_else(|| VmError::RuleInfoMissing {
                 index: rule_index,
                 pc: self.pc,
-                available: self.program.rule_infos.len(),
-            })?
-            .clone();
+                available: program.rule_infos.len(),
+            })?;
 
         let is_function_rule = rule_info.function_info.is_some();
 
@@ -242,7 +249,7 @@ impl RegoVM {
                 *self
                     .rule_cache
                     .get(rule_idx)
-                    .ok_or(VmError::RuleIndexOutOfBounds {
+                    .ok_or_else(|| VmError::RuleIndexOutOfBounds {
                         index: rule_index,
                         pc: self.pc,
                         available: self.rule_cache.len(),
@@ -269,7 +276,7 @@ impl RegoVM {
                 let entry =
                     self.rule_cache
                         .get_mut(rule_idx)
-                        .ok_or(VmError::RuleIndexOutOfBounds {
+                        .ok_or_else(|| VmError::RuleIndexOutOfBounds {
                             index: rule_index,
                             pc: self.pc,
                             available,
@@ -313,7 +320,7 @@ impl RegoVM {
         let call_context = self.call_rule_stack.pop();
         // A cleanup diagnostic must not replace a fatal execution error.
         let (final_result, rule_failed_due_to_inconsistency) = execution_result?;
-        let call_context = call_context.ok_or(VmError::CallRuleStackUnderflow { pc: self.pc })?;
+        let call_context = call_context.ok_or_else(|| VmError::CallRuleStackUnderflow { pc: self.pc })?;
         // Stack discipline: the context we just popped must belong to the
         // rule we are finalizing. A mismatch indicates a missing push or an
         // extra pop somewhere in this rule's execution and would otherwise
@@ -373,7 +380,7 @@ impl RegoVM {
             let entry = self
                 .rule_cache
                 .get_mut(rule_idx)
-                .ok_or(VmError::RuleIndexOutOfBounds {
+                .ok_or_else(|| VmError::RuleIndexOutOfBounds {
                     index: rule_index,
                     pc: self.pc,
                     available,
@@ -407,16 +414,17 @@ impl RegoVM {
             });
         }
 
-        let rule_info = self
-            .program
+        // Interdict fork: borrow rule metadata through a cheap program handle
+        // instead of deep-cloning RuleInfo on every rule/function call.
+        let program = self.program.clone();
+        let rule_info = program
             .rule_infos
             .get(rule_idx)
-            .ok_or(VmError::RuleInfoMissing {
+            .ok_or_else(|| VmError::RuleInfoMissing {
                 index: rule_index,
                 pc: self.pc,
-                available: self.program.rule_infos.len(),
-            })?
-            .clone();
+                available: program.rule_infos.len(),
+            })?;
 
         let is_function_rule = rule_info.function_info.is_some();
 
@@ -425,7 +433,7 @@ impl RegoVM {
                 *self
                     .rule_cache
                     .get(rule_idx)
-                    .ok_or(VmError::RuleIndexOutOfBounds {
+                    .ok_or_else(|| VmError::RuleIndexOutOfBounds {
                         index: rule_index,
                         pc: self.pc,
                         available: self.rule_cache.len(),
@@ -447,7 +455,7 @@ impl RegoVM {
                 let entry =
                     self.rule_cache
                         .get_mut(rule_idx)
-                        .ok_or(VmError::RuleIndexOutOfBounds {
+                        .ok_or_else(|| VmError::RuleIndexOutOfBounds {
                             index: rule_index,
                             pc: self.pc,
                             available,
@@ -536,7 +544,7 @@ impl RegoVM {
 
         let initial_pc = self
             .prepare_rule_frame_initial_pc(&mut frame_data, &rule_info)?
-            .ok_or(VmError::RuleFrameMissingInitialPc { pc: self.pc })?;
+            .ok_or_else(|| VmError::RuleFrameMissingInitialPc { pc: self.pc })?;
 
         let frame = ExecutionFrame::new(initial_pc, FrameKind::Rule(frame_data));
         self.execution_stack.push(frame);
@@ -548,7 +556,7 @@ impl RegoVM {
         let current_ctx = self
             .call_rule_stack
             .last_mut()
-            .ok_or(VmError::CallRuleStackUnderflow { pc: self.pc })?;
+            .ok_or_else(|| VmError::CallRuleStackUnderflow { pc: self.pc })?;
         current_ctx.result_reg = result_reg;
         match current_ctx.rule_type {
             RuleType::Complete => {
@@ -756,16 +764,17 @@ impl RegoVM {
         } = frame_data;
 
         let rule_idx = usize::from(rule_index);
-        let rule_info = self
-            .program
+        // Interdict fork: borrow rule metadata through a cheap program handle
+        // instead of deep-cloning RuleInfo on every rule/function call.
+        let program = self.program.clone();
+        let rule_info = program
             .rule_infos
             .get(rule_idx)
-            .ok_or(VmError::RuleInfoMissing {
+            .ok_or_else(|| VmError::RuleInfoMissing {
                 index: rule_index,
                 pc: self.pc,
-                available: self.program.rule_infos.len(),
-            })?
-            .clone();
+                available: program.rule_infos.len(),
+            })?;
 
         let result_from_rule = if rule_failed_due_to_inconsistency {
             Value::Undefined
@@ -797,7 +806,7 @@ impl RegoVM {
             let slot =
                 parent_registers
                     .get_mut(dest_idx)
-                    .ok_or(VmError::RegisterIndexOutOfBounds {
+                    .ok_or_else(|| VmError::RegisterIndexOutOfBounds {
                         index: dest_reg,
                         pc: self.pc,
                         register_count,
@@ -813,24 +822,20 @@ impl RegoVM {
             match rule_type {
                 RuleType::PartialSet => {
                     let register_count = parent_registers.len();
-                    let slot = parent_registers.get_mut(dest_idx).ok_or(
-                        VmError::RegisterIndexOutOfBounds {
+                    let slot = parent_registers.get_mut(dest_idx).ok_or_else(|| VmError::RegisterIndexOutOfBounds {
                             index: dest_reg,
                             pc: self.pc,
                             register_count,
-                        },
-                    )?;
+                        },)?;
                     *slot = Value::new_set();
                 }
                 RuleType::PartialObject => {
                     let register_count = parent_registers.len();
-                    let slot = parent_registers.get_mut(dest_idx).ok_or(
-                        VmError::RegisterIndexOutOfBounds {
+                    let slot = parent_registers.get_mut(dest_idx).ok_or_else(|| VmError::RegisterIndexOutOfBounds {
                             index: dest_reg,
                             pc: self.pc,
                             register_count,
-                        },
-                    )?;
+                        },)?;
                     *slot = Value::new_object();
                 }
                 RuleType::Complete => {
@@ -842,13 +847,11 @@ impl RegoVM {
                             .cloned()
                         {
                             let register_count = parent_registers.len();
-                            let slot = parent_registers.get_mut(dest_idx).ok_or(
-                                VmError::RegisterIndexOutOfBounds {
+                            let slot = parent_registers.get_mut(dest_idx).ok_or_else(|| VmError::RegisterIndexOutOfBounds {
                                     index: dest_reg,
                                     pc: self.pc,
                                     register_count,
-                                },
-                            )?;
+                                },)?;
                             *slot = default_value;
                         }
                     }
@@ -861,7 +864,7 @@ impl RegoVM {
             parent_registers
                 .get(dest_idx)
                 .cloned()
-                .ok_or(VmError::RegisterIndexOutOfBounds {
+                .ok_or_else(|| VmError::RegisterIndexOutOfBounds {
                     index: dest_reg,
                     pc: self.pc,
                     register_count,
@@ -872,7 +875,7 @@ impl RegoVM {
             let entry = self
                 .rule_cache
                 .get_mut(rule_idx)
-                .ok_or(VmError::RuleIndexOutOfBounds {
+                .ok_or_else(|| VmError::RuleIndexOutOfBounds {
                     index: rule_index,
                     pc: self.pc,
                     available,
@@ -922,7 +925,7 @@ impl RegoVM {
             .rule_infos
             .get(idx)
             .cloned()
-            .ok_or(VmError::RuleInfoMissing {
+            .ok_or_else(|| VmError::RuleInfoMissing {
                 index: rule_index,
                 pc: self.pc,
                 available: self.program.rule_infos.len(),

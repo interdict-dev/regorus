@@ -30,13 +30,11 @@ impl RegoVM {
         crate::utils::limits::without_memory_budget_scope(|| {
             Self::ensure_memory_budget_execution_mode()?;
             let (entry_point_name, entry_point_pc) = {
-                let (name, &pc) = self.program.entry_points.get_index(index).ok_or(
-                    VmError::InvalidEntryPointIndex {
+                let (name, &pc) = self.program.entry_points.get_index(index).ok_or_else(|| VmError::InvalidEntryPointIndex {
                         index,
                         max_index: self.program.entry_points.len().saturating_sub(1),
                         pc: self.pc,
-                    },
-                )?;
+                    },)?;
                 (name.clone(), pc)
             };
 
@@ -159,12 +157,10 @@ impl RegoVM {
 
             self.execution_timer_tick(1)?;
             self.executed_instructions = self.executed_instructions.saturating_add(1);
-            let instruction = program.instructions.get(self.pc).cloned().ok_or(
-                VmError::ProgramCounterOutOfBounds {
+            let instruction = program.instructions.get(self.pc).cloned().ok_or_else(|| VmError::ProgramCounterOutOfBounds {
                     pc: self.pc,
                     instruction_count: program.instructions.len(),
-                },
-            )?;
+                },)?;
 
             match self.execute_instruction(&program, instruction)? {
                 InstructionOutcome::Continue => {
@@ -445,7 +441,7 @@ impl RegoVM {
                 let frame = self
                     .execution_stack
                     .pop()
-                    .ok_or(VmError::MissingExecutionFrame {
+                    .ok_or_else(|| VmError::MissingExecutionFrame {
                         context: "finalizing rule",
                         pc: self.pc,
                     })?;
@@ -460,7 +456,7 @@ impl RegoVM {
                 let frame = self
                     .execution_stack
                     .last()
-                    .ok_or(VmError::MissingExecutionFrame {
+                    .ok_or_else(|| VmError::MissingExecutionFrame {
                         context: "determining pc",
                         pc: self.pc,
                     })?;
@@ -484,7 +480,7 @@ impl RegoVM {
                 let frame = self
                     .execution_stack
                     .pop()
-                    .ok_or(VmError::MissingExecutionFrame {
+                    .ok_or_else(|| VmError::MissingExecutionFrame {
                         context: "finalizing out-of-range pc",
                         pc: self.pc,
                     })?;
@@ -515,12 +511,10 @@ impl RegoVM {
                 self.execution_state = ExecutionState::Error { error: err.clone() };
                 return Err(err);
             }
-            let instruction = program.instructions.get(self.pc).cloned().ok_or(
-                VmError::ProgramCounterOutOfBounds {
+            let instruction = program.instructions.get(self.pc).cloned().ok_or_else(|| VmError::ProgramCounterOutOfBounds {
                     pc: self.pc,
                     instruction_count: program.instructions.len(),
-                },
-            )?;
+                },)?;
             if let Some(frame_info) = self.execution_stack.last() {
                 if let FrameKind::Comprehension { ref context, .. } = frame_info.kind {
                     if context.iteration_state.is_none()
@@ -531,7 +525,7 @@ impl RegoVM {
                         let _completed =
                             self.execution_stack
                                 .pop()
-                                .ok_or(VmError::MissingExecutionFrame {
+                                .ok_or_else(|| VmError::MissingExecutionFrame {
                                     context: "unwinding comprehension",
                                     pc: self.pc,
                                 })?;

@@ -43,6 +43,15 @@ impl<'a> Compiler<'a> {
                 rhs_expr, lhs_plan, ..
             } => {
                 let rhs_reg = self.compile_rego_expr_with_span(rhs_expr, rhs_expr.span(), false)?;
+                // Interdict fork: binding an undefined value fails the body,
+                // as in the interpreter and OPA (an unused binding included).
+                self.emit_instruction(
+                    crate::rvm::instructions::Instruction::Guard {
+                        register: rhs_reg,
+                        mode: crate::rvm::instructions::GuardMode::NotUndefined,
+                    },
+                    span,
+                );
                 let _ = self.apply_destructuring_plan(
                     lhs_plan,
                     rhs_reg,
@@ -55,6 +64,15 @@ impl<'a> Compiler<'a> {
                 rhs_expr, lhs_plan, ..
             } => {
                 let rhs_reg = self.compile_rego_expr_with_span(rhs_expr, rhs_expr.span(), false)?;
+                // Interdict fork: binding an undefined value fails the body,
+                // as in the interpreter and OPA (an unused binding included).
+                self.emit_instruction(
+                    crate::rvm::instructions::Instruction::Guard {
+                        register: rhs_reg,
+                        mode: crate::rvm::instructions::GuardMode::NotUndefined,
+                    },
+                    span,
+                );
                 let _ = self.apply_destructuring_plan(
                     lhs_plan,
                     rhs_reg,
@@ -67,6 +85,15 @@ impl<'a> Compiler<'a> {
                 lhs_expr, rhs_plan, ..
             } => {
                 let lhs_reg = self.compile_rego_expr_with_span(lhs_expr, lhs_expr.span(), false)?;
+                // Interdict fork: binding an undefined value fails the body,
+                // as in the interpreter and OPA (an unused binding included).
+                self.emit_instruction(
+                    crate::rvm::instructions::Instruction::Guard {
+                        register: lhs_reg,
+                        mode: crate::rvm::instructions::GuardMode::NotUndefined,
+                    },
+                    span,
+                );
                 let _ = self.apply_destructuring_plan(
                     rhs_plan,
                     lhs_reg,

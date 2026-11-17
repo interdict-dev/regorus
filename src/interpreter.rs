@@ -229,6 +229,17 @@ pub struct Interpreter {
     active_rules: Vec<Ref<Rule>>,
     native_evaluation_depth: usize,
     builtins_cache: BTreeMap<(&'static str, Vec<Value>), Value>,
+    // Interdict fork: resolved function path per call-site expression. A call
+    // expression belongs to exactly one module, and import-alias resolution
+    // depends only on that module and the compiled policy, so the resolved
+    // path is constant per call site.
+    fcn_path_cache: BTreeMap<usize, String>,
+    // Interdict fork: (module path, module index) per module node, and the
+    // canonical function key per (module path, function path) lookup.
+    module_path_cache: BTreeMap<usize, (String, u32)>,
+    // Extra (output) argument and module-qualified function path per call site.
+    extra_arg_cache: core::cell::RefCell<BTreeMap<usize, Option<Ref<Expr>>>>,
+    qualified_path_cache: core::cell::RefCell<BTreeMap<usize, String>>,
     no_rules_lookup: bool,
     execution_timer: ExecutionTimer,
 }
@@ -270,6 +281,10 @@ impl Clone for Interpreter {
             rule_values: BTreeMap::default(),
 
             builtins_cache: BTreeMap::default(),
+            fcn_path_cache: BTreeMap::default(),
+            module_path_cache: BTreeMap::default(),
+            extra_arg_cache: core::cell::RefCell::default(),
+            qualified_path_cache: core::cell::RefCell::default(),
             active_rules: Vec::default(),
             native_evaluation_depth: 0,
             contexts: Vec::default(),
@@ -352,6 +367,10 @@ impl Interpreter {
             active_rules: Vec::default(),
             native_evaluation_depth: 0,
             builtins_cache: BTreeMap::default(),
+            fcn_path_cache: BTreeMap::default(),
+            module_path_cache: BTreeMap::default(),
+            extra_arg_cache: core::cell::RefCell::default(),
+            qualified_path_cache: core::cell::RefCell::default(),
             no_rules_lookup: false,
             traces: None,
             extensions: Map::default(),
@@ -392,6 +411,10 @@ impl Interpreter {
             active_rules: Vec::default(),
             native_evaluation_depth: 0,
             builtins_cache: BTreeMap::default(),
+            fcn_path_cache: BTreeMap::default(),
+            module_path_cache: BTreeMap::default(),
+            extra_arg_cache: core::cell::RefCell::default(),
+            qualified_path_cache: core::cell::RefCell::default(),
             no_rules_lookup: false,
             traces: None,
 
@@ -451,7 +474,36 @@ impl Interpreter {
         self.execution_timer_tick(1)
     }
 
+    fn cached_extra_arg(&self, expr: &Expr) -> Option<Ref<Expr>> {
+        let site = core::ptr::from_ref::<Expr>(expr) as usize;
+        if let Some(cached) = self.extra_arg_cache.borrow().get(&site) {
+            return cached.clone();
+        }
+        let extra = get_extra_arg(
+            expr,
+            Some(self.current_module_path.as_str()),
+            &self.compiled_policy.functions,
+        );
+        self.extra_arg_cache.borrow_mut().insert(site, extra.clone());
+        extra
+    }
+
+    fn cached_qualified_path(&self, fcn: &ExprRef) -> Result<String> {
+        let site = core::ptr::from_ref::<Expr>(fcn.as_ref()) as usize;
+        if let Some(cached) = self.qualified_path_cache.borrow().get(&site) {
+            return Ok(cached.clone());
+        }
+        let path = get_path_string(fcn, Some(&self.current_module_path))?;
+        self.qualified_path_cache.borrow_mut().insert(site, path.clone());
+        Ok(path)
+    }
+
     fn compiled_policy_mut(&mut self) -> &mut CompiledPolicyData {
+        // Any change to modules, imports or functions invalidates call sites.
+        self.fcn_path_cache.clear();
+        self.module_path_cache.clear();
+        self.extra_arg_cache.get_mut().clear();
+        self.qualified_path_cache.get_mut().clear();
         Rc::make_mut(&mut self.compiled_policy)
     }
 
@@ -1164,11 +1216,7 @@ impl Interpreter {
                         expr,
                         fcn,
                         params,
-                        get_extra_arg(
-                            expr,
-                            Some(self.current_module_path.as_str()),
-                            &self.compiled_policy.functions,
-                        ),
+                        self.cached_extra_arg(expr),
                         true,
                     )?,
                     _ => self.eval_expr(expr)?,
@@ -1209,11 +1257,7 @@ impl Interpreter {
                         expr,
                         fcn,
                         params,
-                        get_extra_arg(
-                            expr,
-                            Some(self.current_module_path.as_str()),
-                            &self.compiled_policy.functions,
-                        ),
+                        self.cached_extra_arg(expr),
                         false,
                     )?,
                     _ => self.eval_expr(expr)?,
@@ -1570,11 +1614,7 @@ impl Interpreter {
                 span, fcn, params, ..
             } = collection_expr.as_ref()
             {
-                let extra_arg = get_extra_arg(
-                    collection_expr,
-                    Some(self.current_module_path.as_str()),
-                    &self.compiled_policy.functions,
-                );
+                let extra_arg = self.cached_extra_arg(collection_expr);
                 let params_slice = if extra_arg.is_some() {
                     let (_, prefix) = params
                         .split_last()
@@ -2575,14 +2615,19 @@ impl Interpreter {
     }
 
     fn lookup_function_by_name(&self, path: &str) -> Option<(&Vec<Ref<Rule>>, &Ref<Module>)> {
-        let mut path = path.to_owned();
-        if !path.starts_with("data.") {
-            // `path` is already a canonical Rego path; its first component is an
-            // identifier, so the separator here cannot flatten a string key.
-            path = format!("{}.{}", self.current_module_path, path);
+        if path.starts_with("data.") {
+            return match self.compiled_policy.functions.get(path) {
+                Some((f, _, m)) => Some((f, m)),
+                _ => None,
+            };
         }
-
-        match self.compiled_policy.functions.get(&path) {
+        // `path` is already a canonical Rego path; its first component is an
+        // identifier, so the separator here cannot flatten a string key.
+        let mut full = String::with_capacity(self.current_module_path.len() + 1 + path.len());
+        full.push_str(&self.current_module_path);
+        full.push('.');
+        full.push_str(path);
+        match self.compiled_policy.functions.get(&full) {
             Some((f, _, m)) => Some((f, m)),
             _ => None,
         }
@@ -2842,22 +2887,28 @@ impl Interpreter {
             return Ok(v.clone());
         }
 
-        let fcn_path = match get_path_string(fcn, None) {
-            Ok(p) => p,
-            _ => bail!(span.error("invalid function expression")),
+        let site = core::ptr::from_ref::<Expr>(fcn.as_ref()) as usize;
+        let fcn_path = if let Some(cached) = self.fcn_path_cache.get(&site) {
+            cached.clone()
+        } else {
+            let fcn_path = match get_path_string(fcn, None) {
+                Ok(p) => p,
+                _ => bail!(span.error("invalid function expression")),
+            };
+            // Resolve a leading import alias before the `with` override and builtin
+            // lookups, so an override keyed by the full path reaches aliased calls
+            // and the alias shadows a like-named builtin namespace (matching OPA).
+            let fcn_path = self
+                .resolve_fcn_path_through_imports(&fcn_path)
+                .unwrap_or(fcn_path);
+            self.fcn_path_cache.insert(site, fcn_path.clone());
+            fcn_path
         };
 
         let mut param_values = Vec::with_capacity(params.len());
         for p in params {
             param_values.push(self.eval_expr(p)?);
         }
-
-        // Resolve a leading import alias before the `with` override and builtin
-        // lookups, so an override keyed by the full path reaches aliased calls
-        // and the alias shadows a like-named builtin namespace (matching OPA).
-        let fcn_path = self
-            .resolve_fcn_path_through_imports(&fcn_path)
-            .unwrap_or(fcn_path);
 
         let orig_fcn_path = fcn_path.clone();
 
@@ -2893,7 +2944,7 @@ impl Interpreter {
                     || self
                         .compiled_policy
                         .default_rules
-                        .contains_key(&get_path_string(fcn, Some(&self.current_module_path))?)
+                        .contains_key(&self.cached_qualified_path(fcn)?)
                 {
                     // process default functions later.
                     (&empty, self.module.clone())
@@ -3110,7 +3161,7 @@ impl Interpreter {
                 {
                     Some(rules) => Some(rules),
                     None => {
-                        let alt_fcn_path = get_path_string(fcn, Some(&self.current_module_path))?;
+                        let alt_fcn_path = self.cached_qualified_path(fcn)?;
                         self.compiled_policy
                             .default_rules
                             .get(&alt_fcn_path)
@@ -3908,8 +3959,18 @@ impl Interpreter {
     ) -> Result<Option<Ref<Module>>> {
         let previous_module = self.module.clone();
         if let Some(new_module) = &module {
-            self.current_module_path = get_path_string(&new_module.package.refr, Some("data"))?;
-            self.current_module_index = self.find_module_index(new_module);
+            let key = core::ptr::from_ref::<Module>(new_module.as_ref()) as usize;
+            if let Some((path, index)) = self.module_path_cache.get(&key) {
+                if self.current_module_path != *path {
+                    self.current_module_path.clone_from(path);
+                }
+                self.current_module_index = *index;
+            } else {
+                self.current_module_path = get_path_string(&new_module.package.refr, Some("data"))?;
+                self.current_module_index = self.find_module_index(new_module);
+                self.module_path_cache
+                    .insert(key, (self.current_module_path.clone(), self.current_module_index));
+            }
         }
         self.module = module;
         Ok(previous_module)

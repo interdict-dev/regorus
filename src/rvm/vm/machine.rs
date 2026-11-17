@@ -1052,7 +1052,7 @@ impl RegoVM {
     pub(super) fn get_register(&self, index: u8) -> Result<&Value> {
         self.registers
             .get(usize::from(index))
-            .ok_or(VmError::RegisterIndexOutOfBounds {
+            .ok_or_else(|| VmError::RegisterIndexOutOfBounds {
                 index,
                 pc: self.pc,
                 register_count: self.registers.len(),
@@ -1067,13 +1067,11 @@ impl RegoVM {
     pub(super) fn take_register(&mut self, index: u8) -> Result<Value> {
         let register_count = self.registers.len();
 
-        let slot = self.registers.get_mut(usize::from(index)).ok_or(
-            VmError::RegisterIndexOutOfBounds {
+        let slot = self.registers.get_mut(usize::from(index)).ok_or_else(|| VmError::RegisterIndexOutOfBounds {
                 index,
                 pc: self.pc,
                 register_count,
-            },
-        )?;
+            },)?;
         Ok(core::mem::replace(slot, Value::Undefined))
     }
 
@@ -1082,13 +1080,11 @@ impl RegoVM {
     pub(super) fn set_register(&mut self, index: u8, value: Value) -> Result<()> {
         let register_count = self.registers.len();
 
-        let slot = self.registers.get_mut(usize::from(index)).ok_or(
-            VmError::RegisterIndexOutOfBounds {
+        let slot = self.registers.get_mut(usize::from(index)).ok_or_else(|| VmError::RegisterIndexOutOfBounds {
                 index,
                 pc: self.pc,
                 register_count,
-            },
-        )?;
+            },)?;
         *slot = value;
         Ok(())
     }
@@ -1160,7 +1156,7 @@ impl RegoVM {
             });
         }
         // SAFETY: we just ensured it's Some above
-        self.dummy_span.as_ref().ok_or(VmError::Internal {
+        self.dummy_span.as_ref().ok_or_else(|| VmError::Internal {
             message: String::from("dummy span not initialized"),
             pc: self.pc,
         })

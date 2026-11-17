@@ -14,7 +14,7 @@ impl RegoVM {
             .instruction_data
             .get_function_call_params(params_index)
             .cloned()
-            .ok_or(VmError::InvalidFunctionCallParamsIndex {
+            .ok_or_else(|| VmError::InvalidFunctionCallParamsIndex {
                 index: params_index,
                 pc: self.pc,
                 available: self.program.instruction_data.function_call_params.len(),
@@ -41,19 +41,17 @@ impl RegoVM {
         let params = program
             .instruction_data
             .get_builtin_call_params(params_index)
-            .ok_or(VmError::InvalidBuiltinCallParamsIndex {
+            .ok_or_else(|| VmError::InvalidBuiltinCallParamsIndex {
                 index: params_index,
                 pc: self.pc,
                 available: program.instruction_data.builtin_call_params.len(),
             })?
             .clone();
-        let builtin_info = program.get_builtin_info(params.builtin_index).ok_or(
-            VmError::InvalidBuiltinInfoIndex {
+        let builtin_info = program.get_builtin_info(params.builtin_index).ok_or_else(|| VmError::InvalidBuiltinInfoIndex {
                 index: params.builtin_index,
                 pc: self.pc,
                 available: program.builtin_info_table.len(),
-            },
-        )?;
+            },)?;
 
         let mut args = core::mem::take(&mut self.cached_builtin_args);
         args.clear();

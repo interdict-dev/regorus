@@ -146,13 +146,11 @@ impl RegoVM {
                                 })?;
                                 self.execute_call_rule_common(temp_reg, rule_index_u16, None)?;
                                 let register_count = self.registers.len();
-                                let result = self.registers.pop().ok_or(
-                                    VmError::RegisterIndexOutOfBounds {
+                                let result = self.registers.pop().ok_or_else(|| VmError::RegisterIndexOutOfBounds {
                                         index: temp_reg,
                                         pc: self.pc,
                                         register_count,
-                                    },
-                                )?;
+                                    },)?;
 
                                 // Build cache_path from root_path + relative_path + Undefined sentinel.
                                 let mut cache_path: Vec<Value> = Vec::with_capacity(
@@ -207,7 +205,7 @@ impl RegoVM {
             .program
             .instruction_data
             .get_virtual_data_document_lookup_params(params_index)
-            .ok_or(VmError::InvalidVirtualDataDocumentLookupParams {
+            .ok_or_else(|| VmError::InvalidVirtualDataDocumentLookupParams {
                 index: params_index,
                 pc: self.pc,
                 available: self
@@ -335,7 +333,7 @@ impl RegoVM {
                 .program
                 .literals
                 .get(usize::from(*idx))
-                .ok_or(VmError::LiteralIndexOutOfBounds {
+                .ok_or_else(|| VmError::LiteralIndexOutOfBounds {
                     index: *idx,
                     pc: self.pc,
                 })?

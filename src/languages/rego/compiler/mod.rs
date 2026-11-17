@@ -112,6 +112,10 @@ impl WorklistEntry {
 
 pub struct Compiler<'a> {
     program: Program,
+    // Interdict fork: literal index (Value has a total order consistent with
+    // equality) and rule-path-pattern match cache, replacing linear scans.
+    literal_index: alloc::collections::BTreeMap<crate::value::Value, u16>,
+    path_pattern_cache: alloc::collections::BTreeMap<Vec<Option<String>>, alloc::collections::BTreeSet<String>>,
     spans: Vec<SpanInfo>,
     register_counter: Register,
     scopes: Vec<Scope>,
@@ -154,6 +158,8 @@ impl<'a> Compiler<'a> {
         let mut program = Program::new();
         program.rego_v0 = policy.is_rego_v0();
         Self {
+            literal_index: alloc::collections::BTreeMap::new(),
+            path_pattern_cache: alloc::collections::BTreeMap::new(),
             program,
             spans: Vec::new(),
             register_counter: 1,

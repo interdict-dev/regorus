@@ -490,7 +490,7 @@ impl RegoVM {
                 let params = program
                     .instruction_data
                     .get_object_create_params(params_index)
-                    .ok_or(VmError::InvalidObjectCreateParams {
+                    .ok_or_else(|| VmError::InvalidObjectCreateParams {
                         index: params_index,
                         pc: self.pc,
                         available: program.instruction_data.object_create_params.len(),
@@ -522,7 +522,7 @@ impl RegoVM {
                     let mut obj_value = program
                         .literals
                         .get(usize::from(params.template_literal_idx))
-                        .ok_or(VmError::InvalidTemplateLiteralIndex {
+                        .ok_or_else(|| VmError::InvalidTemplateLiteralIndex {
                             index: params.template_literal_idx,
                             pc: self.pc,
                             available: program.literals.len(),
@@ -785,7 +785,7 @@ impl RegoVM {
                 let loop_params = program
                     .instruction_data
                     .get_loop_params(params_index)
-                    .ok_or(VmError::InvalidLoopParams {
+                    .ok_or_else(|| VmError::InvalidLoopParams {
                         index: params_index,
                         pc: self.pc,
                         available: loop_params_len,
@@ -1119,7 +1119,7 @@ impl RegoVM {
                 let params = program
                     .instruction_data
                     .get_chained_index_params(params_index)
-                    .ok_or(VmError::InvalidChainedIndexParams {
+                    .ok_or_else(|| VmError::InvalidChainedIndexParams {
                         index: params_index,
                         pc: self.pc,
                         available: program.instruction_data.chained_index_params.len(),
@@ -1132,7 +1132,7 @@ impl RegoVM {
                         LiteralOrRegister::Literal(idx) => program
                             .literals
                             .get(usize::from(idx))
-                            .ok_or(VmError::LiteralIndexOutOfBounds {
+                            .ok_or_else(|| VmError::LiteralIndexOutOfBounds {
                                 index: idx,
                                 pc: self.pc,
                             })?
@@ -1154,7 +1154,7 @@ impl RegoVM {
                 let params = program
                     .instruction_data
                     .get_comprehension_begin_params(params_index)
-                    .ok_or(VmError::InvalidComprehensionBeginParams {
+                    .ok_or_else(|| VmError::InvalidComprehensionBeginParams {
                         index: params_index,
                         pc: self.pc,
                         available: program.instruction_data.comprehension_begin_params.len(),

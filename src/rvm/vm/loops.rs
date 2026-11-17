@@ -265,7 +265,7 @@ impl RegoVM {
             let frame = self
                 .execution_stack
                 .last_mut()
-                .ok_or(VmError::AssertionFailed { pc: self.pc })?;
+                .ok_or_else(|| VmError::AssertionFailed { pc: self.pc })?;
             match &mut frame.kind {
                 &mut FrameKind::Loop {
                     ref return_pc,
@@ -292,7 +292,7 @@ impl RegoVM {
                 let completed_frame = self
                     .execution_stack
                     .pop()
-                    .ok_or(VmError::AssertionFailed { pc: self.pc })?;
+                    .ok_or_else(|| VmError::AssertionFailed { pc: self.pc })?;
                 if let Some(parent) = self.execution_stack.last_mut() {
                     parent.pc = resume_pc;
                     self.frame_pc_overridden = true;
@@ -313,7 +313,7 @@ impl RegoVM {
                         let frame = self
                             .execution_stack
                             .last()
-                            .ok_or(VmError::AssertionFailed { pc: self.pc })?;
+                            .ok_or_else(|| VmError::AssertionFailed { pc: self.pc })?;
                         match frame.kind {
                             FrameKind::Loop { ref context, .. } => (
                                 context.mode,
@@ -329,7 +329,7 @@ impl RegoVM {
                     let frame = self
                         .execution_stack
                         .last_mut()
-                        .ok_or(VmError::AssertionFailed { pc: self.pc })?;
+                        .ok_or_else(|| VmError::AssertionFailed { pc: self.pc })?;
                     match &mut frame.kind {
                         &mut FrameKind::Loop {
                             ref mut context, ..
@@ -388,7 +388,7 @@ impl RegoVM {
                     let completed_frame = self
                         .execution_stack
                         .pop()
-                        .ok_or(VmError::AssertionFailed { pc: self.pc })?;
+                        .ok_or_else(|| VmError::AssertionFailed { pc: self.pc })?;
                     if let Some(parent) = self.execution_stack.last_mut() {
                         parent.pc = resume_pc;
                         self.frame_pc_overridden = true;
@@ -611,7 +611,7 @@ impl RegoVM {
                 let loop_ctx = self
                     .loop_stack
                     .last()
-                    .ok_or(VmError::AssertionFailed { pc: self.pc })?;
+                    .ok_or_else(|| VmError::AssertionFailed { pc: self.pc })?;
                 (
                     loop_ctx.mode,
                     loop_ctx.loop_next_pc,
@@ -663,7 +663,7 @@ impl RegoVM {
                 let frame = self
                     .execution_stack
                     .last_mut()
-                    .ok_or(VmError::AssertionFailed { pc: self.pc })?;
+                    .ok_or_else(|| VmError::AssertionFailed { pc: self.pc })?;
                 match &mut frame.kind {
                     &mut FrameKind::Loop {
                         ref return_pc,
@@ -711,7 +711,7 @@ impl RegoVM {
                     let completed_frame = self
                         .execution_stack
                         .pop()
-                        .ok_or(VmError::AssertionFailed { pc: self.pc })?;
+                        .ok_or_else(|| VmError::AssertionFailed { pc: self.pc })?;
                     if let Some(parent) = self.execution_stack.last_mut() {
                         parent.pc = resume_pc;
                         self.frame_pc_overridden = true;

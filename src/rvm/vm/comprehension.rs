@@ -325,7 +325,7 @@ impl RegoVM {
                     .get(idx)
                     .is_some_and(|frame| matches!(frame.kind, FrameKind::Comprehension { .. }))
             })
-            .ok_or(VmError::InvalidIteration {
+            .ok_or_else(|| VmError::InvalidIteration {
                 value: Value::String(Arc::from("No active comprehension")),
                 pc: self.pc,
             })?;
@@ -334,7 +334,7 @@ impl RegoVM {
             let frame =
                 self.execution_stack
                     .get(comprehension_index)
-                    .ok_or(VmError::InvalidIteration {
+                    .ok_or_else(|| VmError::InvalidIteration {
                         value: Value::String(Arc::from("No active comprehension")),
                         pc: self.pc,
                     })?;
@@ -408,12 +408,10 @@ impl RegoVM {
         self.set_register(result_reg_idx, current_result)?;
 
         let (iteration_state_snapshot, body_start, comprehension_end) = {
-            let frame = self.execution_stack.get_mut(comprehension_index).ok_or(
-                VmError::InvalidIteration {
+            let frame = self.execution_stack.get_mut(comprehension_index).ok_or_else(|| VmError::InvalidIteration {
                     value: Value::String(Arc::from("No active comprehension")),
                     pc: self.pc,
-                },
-            )?;
+                },)?;
 
             if let &mut FrameKind::Comprehension {
                 ref mut context, ..

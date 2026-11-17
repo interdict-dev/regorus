@@ -194,15 +194,23 @@ impl<'a> Compiler<'a> {
         // Check if this path could be a prefix of any rules (for virtual document lookup)
         // Convert the full chain to a pattern that includes wildcards for dynamic components
         let path_pattern = self.create_path_pattern(&chain.components);
-        let matching_rules: BTreeSet<String> = self
-            .policy
-            .inner
-            .rules
-            .keys()
-            .chain(self.policy.inner.default_rules.keys())
-            .filter(|rule_path| self.matches_path_pattern(rule_path, &path_pattern))
-            .cloned()
-            .collect();
+        let matching_rules: BTreeSet<String> = if let Some(cached) =
+            self.path_pattern_cache.get(&path_pattern)
+        {
+            cached.clone()
+        } else {
+            let computed: BTreeSet<String> = self
+                .policy
+                .inner
+                .rules
+                .keys()
+                .chain(self.policy.inner.default_rules.keys())
+                .filter(|rule_path| self.matches_path_pattern(rule_path, &path_pattern))
+                .cloned()
+                .collect();
+            self.path_pattern_cache.insert(path_pattern.clone(), computed.clone());
+            computed
+        };
 
         if !matching_rules.is_empty() {
             // This path is a prefix of some rules - use DataVirtualDocumentLookup

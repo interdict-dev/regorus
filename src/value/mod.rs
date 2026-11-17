@@ -195,6 +195,11 @@ pub(crate) fn compare_unchecked(
     right: &Value,
     equality: bool,
 ) -> core::cmp::Ordering {
+    if equality {
+        if let Some(order) = compare_scalar_fast(left, right, true) {
+            return order;
+        }
+    }
     compare_values(CompareFrame::Value(left, right), equality.then_some(true))
 }
 
@@ -360,8 +365,35 @@ const fn value_rank(value: &Value) -> u8 {
     }
 }
 
+/// Interdict fork: scalar and type-mismatch fast paths shared by equality and
+/// ordering. Returns None when the general frame comparison is required.
+#[inline]
+fn compare_scalar_fast(a: &Value, b: &Value, equality: bool) -> Option<core::cmp::Ordering> {
+    use core::cmp::Ordering;
+    match (a, b) {
+        (Value::Null, Value::Null) | (Value::Undefined, Value::Undefined) => Some(Ordering::Equal),
+        (Value::Bool(x), Value::Bool(y)) => Some(x.cmp(y)),
+        (Value::String(x), Value::String(y)) => {
+            if Rc::ptr_eq(x, y) {
+                Some(Ordering::Equal)
+            } else if equality && x.len() != y.len() {
+                Some(Ordering::Less)
+            } else {
+                Some(x.as_ref().cmp(y.as_ref()))
+            }
+        }
+        _ if equality && core::mem::discriminant(a) != core::mem::discriminant(b) => {
+            Some(Ordering::Less)
+        }
+        _ => None,
+    }
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
+        if let Some(order) = compare_scalar_fast(self, other, true) {
+            return order.is_eq();
+        }
         compare_values(CompareFrame::Value(self, other), Some(true)).is_eq()
     }
 }
@@ -370,6 +402,9 @@ impl Eq for Value {}
 
 impl Ord for Value {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        if let Some(order) = compare_scalar_fast(self, other, false) {
+            return order;
+        }
         compare_values(CompareFrame::Value(self, other), None)
     }
 }

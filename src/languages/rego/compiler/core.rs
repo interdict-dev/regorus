@@ -99,15 +99,13 @@ impl<'a> Compiler<'a> {
 
     /// Add a literal value to the literal table, returning its index
     pub fn add_literal(&mut self, value: Value) -> u16 {
-        // Check if literal already exists to avoid duplication
-        // TODO: Optimize lookup
-        for (idx, existing) in self.program.literals.iter().enumerate() {
-            if existing == &value {
-                return idx as u16;
-            }
+        // Interdict fork: O(log n) de-duplication through an ordered index
+        // instead of a linear scan of every literal.
+        if let Some(idx) = self.literal_index.get(&value) {
+            return *idx;
         }
-
         let idx = self.program.literals.len() as u16;
+        self.literal_index.insert(value.clone(), idx);
         self.program.literals.push(value);
         idx
     }

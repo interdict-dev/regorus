@@ -13,7 +13,7 @@ fn operands(registers: &[Value], pc: usize, left: u8, right: u8) -> Result<(&Val
     let get = |index: u8| {
         registers
             .get(usize::from(index))
-            .ok_or(VmError::RegisterIndexOutOfBounds {
+            .ok_or_else(|| VmError::RegisterIndexOutOfBounds {
                 index,
                 pc,
                 register_count: registers.len(),
