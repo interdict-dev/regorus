@@ -116,6 +116,7 @@ impl<'a> Compiler<'a> {
         query: &Query,
         span: &Span,
     ) -> Result<()> {
+        let saved_roots = self.save_root_registers();
         let collection_reg = self.compile_rego_expr(domain)?;
 
         let key_reg = self.alloc_register()?;
@@ -210,6 +211,7 @@ impl<'a> Compiler<'a> {
             span,
         );
 
+        self.restore_root_registers(saved_roots);
         Ok(())
     }
 
@@ -222,6 +224,7 @@ impl<'a> Compiler<'a> {
         remaining_stmts: &[&LiteralStmt],
         remaining_loops: &[HoistedLoop],
     ) -> Result<()> {
+        let saved_roots = self.save_root_registers();
         let collection_reg = self.compile_rego_expr(collection)?;
 
         let key_reg = self.alloc_register()?;
@@ -344,6 +347,7 @@ impl<'a> Compiler<'a> {
             );
         }
 
+        self.restore_root_registers(saved_roots);
         Ok(())
     }
 
@@ -365,6 +369,7 @@ impl<'a> Compiler<'a> {
         collection: &ExprRef,
         loop_body_stmts: &[&LiteralStmt],
     ) -> Result<Register> {
+        let saved_roots = self.save_root_registers();
         let collection_reg = self.compile_rego_expr(collection)?;
 
         let key_reg = self.alloc_register()?;
@@ -494,6 +499,7 @@ impl<'a> Compiler<'a> {
             *end = loop_end;
         }
 
+        self.restore_root_registers(saved_roots);
         Ok(result_reg)
     }
 }

@@ -122,6 +122,20 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    /// Remember the cached `input`/`data` registers before compiling a region
+    /// that may execute zero times (a comprehension or loop body).
+    pub(super) fn save_root_registers(&self) -> (Option<Register>, Option<Register>) {
+        (self.current_input_register, self.current_data_register)
+    }
+
+    /// Restore the cached `input`/`data` registers after such a region. A root
+    /// first loaded inside it is not loaded when the region runs zero times,
+    /// so code after the region must load it again instead of reusing it.
+    pub(super) fn restore_root_registers(&mut self, saved: (Option<Register>, Option<Register>)) {
+        self.current_input_register = saved.0;
+        self.current_data_register = saved.1;
+    }
+
     /// Reset input/data registers for a new rule definition
     /// This ensures input and data are loaded only once per rule definition
     pub fn reset_rule_definition_registers(&mut self) {

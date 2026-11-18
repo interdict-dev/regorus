@@ -308,3 +308,62 @@ cases:
     query: data.test.result
     want_result:
       - [1, 2]
+
+  # A root (input/data) first read inside a comprehension body that runs zero
+  # times must still be loaded for reads after the comprehension.
+  - note: input_first_read_in_empty_comprehension_is_reloaded_after
+    input:
+      idx: {"a": [1, 2, 3]}
+    modules:
+      - |
+        package test
+        main := sum([count(input.idx[k]) | some k in []]) + sum([count(input.idx[k]) | some k in ["a"]])
+    query: data.test.main
+    want_result: 3
+
+  - note: input_first_read_in_empty_comprehension_is_reloaded_in_function
+    input:
+      idx: {"a": [1, 2, 3]}
+    modules:
+      - |
+        package test
+        f(xs, ys) := sum([count(object.get(input.idx, k, [])) | some k in xs]) + sum([count(object.get(input.idx, k, [])) | some k in ys])
+        main := f([], ["a"])
+    query: data.test.main
+    want_result: 3
+
+  - note: input_first_read_in_empty_comprehension_is_reloaded_in_body
+    input:
+      idx: {"a": [1, 2, 3]}
+    modules:
+      - |
+        package test
+        main := n if {
+          empty := [k | some k in []; input.idx[k]]
+          n := count(input.idx.a) + count(empty)
+        }
+    query: data.test.main
+    want_result: 3
+
+  - note: data_first_read_in_empty_comprehension_is_reloaded_after
+    data:
+      idx: {"a": [1, 2, 3]}
+    modules:
+      - |
+        package test
+        main := sum([count(data.idx[k]) | some k in []]) + count(data.idx.a)
+    query: data.test.main
+    want_result: 3
+
+  - note: input_first_read_in_empty_every_is_reloaded_after
+    input:
+      idx: {"a": [1, 2, 3]}
+    modules:
+      - |
+        package test
+        main := n if {
+          every k in [] { input.idx[k] }
+          n := count(input.idx.a)
+        }
+    query: data.test.main
+    want_result: 3

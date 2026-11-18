@@ -47,7 +47,9 @@ impl<'a> Compiler<'a> {
             key_value_loops_hoisted: false,
         };
         self.push_context(context);
+        let saved_roots = self.save_root_registers();
         self.compile_query(query)?;
+        self.restore_root_registers(saved_roots);
         self.pop_context();
 
         self.emit_instruction(Instruction::ComprehensionEnd {}, span);
